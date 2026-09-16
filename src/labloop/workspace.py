@@ -47,6 +47,7 @@ class NotAGitRepositoryError(RuntimeError):
 class Workspace(Protocol):
     def is_dirty(self) -> bool: ...
     def changed_paths(self) -> list[str]: ...
+    def untracked_paths(self) -> list[str]: ...
     def revert(self) -> None: ...
     def commit(self, message: str, paths: Sequence[str] | None = None) -> str: ...
 
@@ -186,6 +187,41 @@ class GitWorkspace:
             if "R" in status or "C" in status:
                 index += 1
                 paths.add(self._from_toplevel(tokens[index]))
+            index += 1
+        return sorted(paths)
+
+    def untracked_paths(self) -> list[str]:
+        """Untracked paths as the workdir sees them (`??` in porcelain).
+
+        Untracked-only on purpose: callers (the import-shadow guard) flag
+        files a proposal *added*. A stdlib-named file tracked since the
+        baseline is vendored source the proposer is allowed to edit —
+        flagging it would reject honest edits to a package that happens to
+        name a module like the standard library does.
+        """
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
+            cwd=str(self._toplevel()),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"git status failed: {result.stderr.strip()}")
+
+        tokens = result.stdout.split("\0")
+        paths: list[str] = []
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if not token:
+                index += 1
+                continue
+            status, name = token[:2], token[3:]
+            if "?" in status:
+                paths.append(self._from_toplevel(name))
+            # A rename or copy carries the original name as its own token.
+            if "R" in status or "C" in status:
+                index += 1
             index += 1
         return sorted(paths)
 

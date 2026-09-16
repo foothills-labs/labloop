@@ -22,7 +22,7 @@ from .integrity import HarnessMismatchError, NoProtectedFilesError, harness_dige
 from .ledger import Ledger
 from .lock import LedgerLock, LedgerLockedError
 from .loop import Loop, StalledError
-from .metrics import MetricNotFound, extract_metric
+from .metrics import MetricAmbiguous, MetricNotFound, extract_metric
 from .runner import Completed, run_command
 from .sandbox import (
     BwrapSandbox,
@@ -56,6 +56,7 @@ __all__ = [
     "LedgerLockedError",
     "Loop",
     "MetricNotFound",
+    "MetricAmbiguous",
     "NotAGitRepositoryError",
     "NoProtectedFilesError",
     "Outcome",

@@ -336,3 +336,17 @@ def test_a_missing_git_identity_is_refused(repo, monkeypatch):
 
 def test_a_configured_identity_is_accepted(repo):
     GitWorkspace(repo).require_identity()   # the fixture sets name and email
+
+
+def test_untracked_paths_reports_only_untracked(repo):
+    (repo / "train.py").write_text("changed\n")          # tracked edit: not untracked
+    (repo / "json.py").write_text("shadow\n")            # new untracked file
+    (repo / "scratch").mkdir()
+    (repo / "scratch" / "notes.md").write_text("hi\n")
+    assert GitWorkspace(repo).untracked_paths() == ["json.py", "scratch/notes.md"]
+
+
+def test_untracked_paths_from_a_subdirectory(subdir_repo):
+    _, sub = subdir_repo
+    (sub / "hashlib.py").write_text("shadow\n")
+    assert GitWorkspace(sub).untracked_paths() == ["hashlib.py"]

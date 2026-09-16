@@ -12,6 +12,7 @@ from labloop import (
     Goal,
     Ledger,
     Loop,
+    MetricAmbiguous,
     Outcome,
     StalledError,
 )
@@ -487,3 +488,46 @@ def test_ledger_best_and_summary(tmp_path):
     assert ledger.summary()["kept"] == 2
     assert ledger.summary()["reverted"] == 1
     assert ledger.next_index() == 3
+
+
+def test_strict_metric_fails_a_forging_repeat_with_a_note(tmp_path):
+    # The metric printed twice — e.g. a real line, then "seconds = 0.0001"
+    # registered by the code under measurement. Strict mode refuses to pick.
+    loop, ws = make_loop(
+        tmp_path, run="printf 'val = 1.0\\nval = 0.5\\n'", strict_metric=True
+    )
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.FAILED
+    assert trial.metric is None
+    assert "2 times" in (trial.note or "")
+    assert ws.reverts == 1 and not ws.commits
+
+
+def test_strict_mode_keeps_a_single_reading(tmp_path):
+    loop, ws = make_loop(tmp_path, run="echo val = 1.0", strict_metric=True)
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.KEPT
+    assert trial.metric == 1.0
+    assert not ws.reverts
+
+
+def test_strict_baseline_refuses_to_record_an_ambiguous_metric(tmp_path):
+    loop, _ = make_loop(
+        tmp_path, run="printf 'val = 1.0\\nval = 0.5\\n'", strict_metric=True
+    )
+    with pytest.raises(MetricAmbiguous):
+        loop.baseline()
+
+
+def test_guard_imports_flags_a_planted_shadow_at_the_proposal(tmp_path):
+    loop, ws = make_loop(tmp_path, run="echo val = 1.0", guard_imports=True)
+    ws._untracked = ["json.py"]  # planted by the proposal, not at the baseline
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.HARNESS_CHANGED
+    assert "import shadow" in (trial.note or "")
+
+
+def test_guard_imports_ignores_ordinary_proposals(tmp_path):
+    loop, _ = make_loop(tmp_path, run="echo val = 1.0", guard_imports=True)
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.KEPT

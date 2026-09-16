@@ -96,6 +96,19 @@ def _build_parser() -> argparse.ArgumentParser:
             help="how much better the metric must be to count; `labloop noise` suggests two",
         )
         p.add_argument(
+            "--strict-metric",
+            action="store_true",
+            help="fail a trial whose output repeats the metric key; a repeat "
+            "printed after the real value could be forging it",
+        )
+        p.add_argument(
+            "--guard-imports",
+            action="store_true",
+            help="treat a new stdlib-named file in the tree (json.py, hashlib/) "
+            "as tampering — planted where the run imports from, it replaces "
+            "the standard library for the measurement",
+        )
+        p.add_argument(
             "--budget", type=float, default=300.0, help="seconds the run command may take"
         )
         p.add_argument("--workdir", default=".")
@@ -461,6 +474,8 @@ def _experiment_command(args: argparse.Namespace) -> int:
         brief=getattr(args, "brief", True),
         confirm=getattr(args, "confirm", False),
         min_delta=args.min_delta,
+        strict_metric=getattr(args, "strict_metric", False),
+        guard_imports=getattr(args, "guard_imports", False),
         give_up_after=getattr(args, "give_up_after", 0),
         propose_budget=getattr(args, "propose_budget", None),
         label=getattr(args, "label", None),

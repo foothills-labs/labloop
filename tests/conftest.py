@@ -88,6 +88,7 @@ class FakeWorkspace:
         # Most tests care about the judging, not the editing.
         self._dirty = dirty
         self._just_committed = False
+        self._untracked: list[str] = []
         self.reverts = 0
         self.commits: list[str] = []
         self.committed_paths: list[list[str] | None] = []
@@ -104,6 +105,11 @@ class FakeWorkspace:
 
     def changed_paths(self) -> list[str]:
         return ["train.py"] if self._dirty else []
+
+    def untracked_paths(self) -> list[str]:
+        # Real worktrees carry stray untracked files between trials; the
+        # guard defaults off, so tests that do not set it see none.
+        return list(self._untracked)
 
     def revert(self) -> None:
         self.reverts += 1
@@ -123,6 +129,8 @@ def make_loop(
     budget=30.0,
     protect=(),
     dirty=True,
+    strict_metric=False,
+    guard_imports=False,
 ):
     """A loop over `tmp_path` with a stub workspace, plus that stub."""
     ws = FakeWorkspace(dirty=dirty)
@@ -133,6 +141,8 @@ def make_loop(
         budget_seconds=budget,
         propose=propose,
         protect=protect,
+        strict_metric=strict_metric,
+        guard_imports=guard_imports,
     )
     loop = Loop(exp, workdir=tmp_path, ledger=tmp_path / "l.jsonl", workspace=ws)
     return loop, ws
