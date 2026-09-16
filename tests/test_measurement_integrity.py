@@ -195,3 +195,26 @@ def test_cli_noise_refuses_tampering_without_printing_statistics(project, capsys
     assert "noise run modified the harness: eval.py" in output.err
     assert "spread:" not in output.out
     assert not (project / "labloop.jsonl").exists()
+
+
+def test_a_strict_confirmation_repeat_reverts_with_the_reason(project):
+    # The first run prints the metric once; the confirmation run prints it
+    # twice. Strict mode refuses the repeat on the run that decided nothing
+    # yet — the kept verdict is withdrawn with the reason in the note.
+    payload = '''from pathlib import Path
+counter = Path("__pycache__/confirm-count")
+count = int(counter.read_text()) + 1 if counter.exists() else 1
+counter.parent.mkdir(exist_ok=True)
+counter.write_text(str(count))
+if count == 2:
+    print("val_loss = 0.01")
+print("val_loss = 0.01")
+'''
+    loop = Loop(experiment(propose=write_command("train.py", payload),
+                           strict_metric=True, confirm=True), workdir=project)
+    loop.baseline()
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.REVERTED
+    assert trial.metric is None
+    assert "printed 2 times" in trial.note
+    assert not GitWorkspace(project).is_dirty()
