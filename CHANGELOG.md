@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.4 — 2026-09-16
+
+- `--strict-metric`: a trial whose output repeats the metric key fails instead
+  of letting the last occurrence win. The last line wins honestly for
+  experiments that stream a metric — and also for code under measurement that
+  prints a forged value *after* the real one, which is indistinguishable from
+  an honest progress line, so strict mode stops guessing and fails the trial
+  (reproduced: a 3-line `atexit` hook inside the library under test forges the
+  score while outputs, tests, and a confirmation run all stay clean).
+  Off by default; recorded in the manifest. A repeat at the trial records
+  `FAILED` with the repeat count; at baseline or noise calibration it refuses
+  loudly like a harness mismatch, and on a confirmation run reverts with the
+  reason instead of escaping as a traceback.
+- `--guard-imports`: a new untracked file whose name is a Python
+  standard-library module name — `json.py`, `hashlib/`, a crafted
+  `.cpython-*.pyc` or compiled `.so` — fails the trial as tampering instead of
+  being committed on a keep. Python puts the run script's directory on
+  `sys.path` unprompted; a shadow planted there replaces the standard library
+  for the measurement itself. A stdlib-named file tracked since the baseline
+  is vendored source and stays editable; a legitimate new module named like a
+  stdlib one fails loudly (rename it or turn the guard off). Off by default;
+  recorded in the manifest.
+- Git workspaces gained `untracked_paths()`, and the CLI styles
+  `MetricAmbiguous` as expected input rather than a crash.
+
 ## 1.0.3 — 2026-09-15
 
 - Check protected files and the ledger after completed measurements, including baselines, confirmation runs, and noise calibration, before accepting metrics. Discard tampered scores, restore altered ledgers, and identify the violating phase. Preserve preexisting uncommitted baseline work and stop noise calibration without publishing statistics.
