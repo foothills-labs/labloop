@@ -402,7 +402,13 @@ class Loop:
             rejected = reject_tampering(again, "confirmation run")
             if rejected is not None:
                 return rejected
-            second = self._read_metric(again.output)
+            try:
+                second = self._read_metric(again.output)
+            except MetricAmbiguous as exc:
+                note = f"won at {metric:.6g} but {exc}"
+                return reject(
+                    Outcome.REVERTED, spent, metric=None, note=note, stdout_tail=again.tail
+                )
             shown = f"{second:.6g}" if second is not None else "--"
             note = f"won at {metric:.6g} but measured {shown} on a second run"
 

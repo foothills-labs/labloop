@@ -14,6 +14,7 @@ from .integrity import HarnessMismatchError, NoProtectedFilesError
 from .ledger import Ledger
 from .lock import LedgerLockedError
 from .loop import Loop, StalledError
+from .metrics import MetricAmbiguous
 from .sandbox import SandboxError
 from .types import Experiment, Goal, Outcome, Trial, UsageError
 from .workspace import DirtyTreeError, GitIdentityError, NotAGitRepositoryError
@@ -283,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
         GitIdentityError,
         HarnessMismatchError,
         LedgerLockedError,
+        MetricAmbiguous,
         NoProtectedFilesError,
         NotAGitRepositoryError,
         SandboxError,
