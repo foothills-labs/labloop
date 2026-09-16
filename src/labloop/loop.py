@@ -642,7 +642,13 @@ class Loop:
         if self._ledger_changed(ledger_before):
             return f"{phase} modified the ledger"
         if self.experiment.guard_imports:
-            shadow = import_shadow(self.workspace.untracked_paths())
+            # Untracked alone is bypassable: a proposal that edits the
+            # tracked .gitignore parks its shadow among the ignored files,
+            # which porcelain never reports. Scan both sets — a stdlib-named
+            # file ignored before the baseline fails closed too.
+            shadow = import_shadow(
+                [*self.workspace.untracked_paths(), *self.workspace.ignored_paths()]
+            )
             if shadow:
                 return (
                     f"{phase} planted an import shadow: {shadow} — a new file "

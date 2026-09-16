@@ -109,3 +109,20 @@ def test_strict_single_json_line_is_fine():
 def test_strict_only_governs_the_format_that_matched():
     # One key=value hit answers the call before JSON is consulted.
     assert extract_metric("val = 1.0\n", "val", strict=True) == 1.0
+
+
+def test_strict_counts_a_repeat_across_formats():
+    # A forged kv line printed before the honest JSON one: first-format
+    # precedence would read the forgery; strict counts both and refuses.
+    with pytest.raises(MetricAmbiguous):
+        extract_metric('seconds = 0.001\n{"seconds": 0.1}', "seconds", strict=True)
+
+
+def test_strict_kv_and_json_each_once_still_raise():
+    output = 'val = 1.0\n{"val": 0.5}\n'
+    with pytest.raises(MetricAmbiguous):
+        extract_metric(output, "val", strict=True)
+
+
+def test_default_cross_format_stays_first_format_wins():
+    assert extract_metric('seconds = 0.001\n{"seconds": 0.1}', "seconds") == 0.001

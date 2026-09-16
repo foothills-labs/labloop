@@ -48,6 +48,7 @@ class Workspace(Protocol):
     def is_dirty(self) -> bool: ...
     def changed_paths(self) -> list[str]: ...
     def untracked_paths(self) -> list[str]: ...
+    def ignored_paths(self) -> list[str]: ...
     def revert(self) -> None: ...
     def commit(self, message: str, paths: Sequence[str] | None = None) -> str: ...
 
@@ -143,6 +144,26 @@ class GitWorkspace:
                 '  git config user.name "Your Name"\n'
                 '  git config user.email "you@example.com"'
             )
+
+    def ignored_paths(self) -> list[str]:
+        """Ignored-but-present paths, as the workdir sees them.
+
+        Porcelain omits ignored files, so this is what a *tracked*
+        `.gitignore` edit can hide: a proposer that appends its own shadow
+        to `.gitignore` parks `json.py` where untracked_paths() never
+        looks. Callers (the import-shadow guard) scan these alongside the
+        untracked set — a stdlib-named file ignored before the baseline is
+        flagged too, fail-closed: it has been shadowable all along.
+        """
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+            cwd=str(self._toplevel()),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"git ls-files failed: {result.stderr.strip()}")
+        return sorted(self._from_toplevel(t) for t in result.stdout.split("\0") if t)
 
     def revert(self) -> None:
         """Put the tree back to the last commit, staged changes included.

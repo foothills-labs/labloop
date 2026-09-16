@@ -531,3 +531,14 @@ def test_guard_imports_ignores_ordinary_proposals(tmp_path):
     loop, _ = make_loop(tmp_path, run="echo val = 1.0", guard_imports=True)
     (trial,) = loop.run(trials=1)
     assert trial.outcome is Outcome.KEPT
+
+
+def test_guard_imports_catches_a_gitignore_hidden_shadow(tmp_path):
+    # The bypass: the proposal edits the tracked .gitignore to ignore its
+    # shadow, which porcelain never reports. The guard scans ignored paths
+    # too — the plant fails the trial instead of being committed.
+    loop, ws = make_loop(tmp_path, run="echo val = 1.0", guard_imports=True)
+    ws._ignored = ["json.py"]
+    (trial,) = loop.run(trials=1)
+    assert trial.outcome is Outcome.HARNESS_CHANGED
+    assert "import shadow" in (trial.note or "")

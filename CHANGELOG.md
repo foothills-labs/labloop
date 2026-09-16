@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.5 — 2026-09-16
+
+- Close two adversarial-review holes in the 1.0.4 guards, both reproduced:
+  - **`.gitignore` bypass of `--guard-imports`**: a proposal that edits the
+    tracked `.gitignore` can park its shadow among the ignored files, which
+    porcelain never reports, and the forged import loads while the guard sees
+    nothing. The guard now scans ignored paths alongside untracked ones
+    (`GitWorkspace.ignored_paths()`); a stdlib-named file ignored before the
+    baseline fails closed too.
+  - **Cross-format repeat under `--strict-metric`**: one key/value hit plus
+    one JSON hit evaded the repeat check because only the first matching
+    format was counted. Strict now counts mentions across both formats, so a
+    forgery in the "other" format fails the trial.
+- Both findings were found by adversarial review of the 1.0.4 release before
+  any chase ran with them.
 ## 1.0.4 — 2026-09-16
 
 - `--strict-metric`: a trial whose output repeats the metric key fails instead

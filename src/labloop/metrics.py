@@ -58,20 +58,28 @@ def extract_metric(output: str, key: str, *, strict: bool = False) -> float:
     the loop treats the two differently.
 
     With ``strict``, raise MetricAmbiguous instead of choosing when the key
-    appears more than once in the format that matched. Off by default:
-    streaming experiments legitimately repeat a metric, and last-wins is
-    their contract.
+    appears more than once — in EITHER format. Counting one key/value hit and
+    one JSON hit together is deliberate: an adversarial run prints its
+    forgery in whichever format the honest one did not use. Off by default:
+    streaming experiments legitimately repeat a metric, and last-wins in the
+    first matching format stays their contract.
 
     The result may be nan or inf. Those are values the experiment printed, so
     reporting them is honest; refusing to compare them is the loop's job.
     """
-    value = _from_key_value(output, key, strict=strict)
-    if value is not None:
-        return value
-
-    value = _from_json_lines(output, key, strict=strict)
-    if value is not None:
-        return value
+    kv = _key_value_matches(output, key)
+    js = _json_value_matches(output, key)
+    if strict and len(kv) + len(js) > 1:
+        raise MetricAmbiguous(
+            f"metric {key!r} printed {len(kv) + len(js)} times "
+            f"({len(kv)} key/value, {len(js)} JSON); strict mode refuses to "
+            "pick between repeats — a line printed after the real value "
+            "could be forging it"
+        )
+    if kv:
+        return kv[-1]
+    if js:
+        return js[-1]
 
     raise MetricNotFound(f"metric {key!r} not found in output")
 
@@ -88,25 +96,16 @@ def _word_edge(char: str) -> str:
     return r"\b" if char.isalnum() or char == "_" else ""
 
 
-def _from_key_value(output: str, key: str, *, strict: bool = False) -> float | None:
+def _key_value_matches(output: str, key: str) -> list[float]:
     pattern = re.compile(
         rf"{_word_edge(key[:1])}{re.escape(key)}{_word_edge(key[-1:])}"
         rf"\s*[=:]\s*({_NUMBER})",
         re.IGNORECASE,
     )
-    matches = [float(found) for found in pattern.findall(output)]
-    if not matches:
-        return None
-    if strict and len(matches) > 1:
-        raise MetricAmbiguous(
-            f"metric {key!r} printed {len(matches)} times; strict mode refuses "
-            "to pick between repeats — a line printed after the real value "
-            "could be forging it"
-        )
-    return matches[-1]
+    return [float(found) for found in pattern.findall(output)]
 
 
-def _from_json_lines(output: str, key: str, *, strict: bool = False) -> float | None:
+def _json_value_matches(output: str, key: str) -> list[float]:
     found: list[float] = []
     for line in output.splitlines():
         line = line.strip()
@@ -121,11 +120,4 @@ def _from_json_lines(output: str, key: str, *, strict: bool = False) -> float | 
                 found.append(float(obj[key]))
             except (TypeError, ValueError):
                 continue
-    if not found:
-        return None
-    if strict and len(found) > 1:
-        raise MetricAmbiguous(
-            f"metric {key!r} in {len(found)} JSON lines; strict mode refuses "
-            "to pick between repeats"
-        )
-    return found[-1]
+    return found

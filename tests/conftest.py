@@ -89,6 +89,7 @@ class FakeWorkspace:
         self._dirty = dirty
         self._just_committed = False
         self._untracked: list[str] = []
+        self._ignored: list[str] = []
         self.reverts = 0
         self.commits: list[str] = []
         self.committed_paths: list[list[str] | None] = []
@@ -110,6 +111,9 @@ class FakeWorkspace:
         # Real worktrees carry stray untracked files between trials; the
         # guard defaults off, so tests that do not set it see none.
         return list(self._untracked)
+
+    def ignored_paths(self) -> list[str]:
+        return list(self._ignored)
 
     def revert(self) -> None:
         self.reverts += 1
