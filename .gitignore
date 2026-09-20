@@ -17,3 +17,8 @@ labloop.jsonl
 .idea/
 .vscode/
 dist/
+
+# Local environments and disposable lab views
+.plicara/generated/
+.venv/
+__pycache__/

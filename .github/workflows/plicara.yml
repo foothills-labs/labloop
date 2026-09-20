@@ -1,0 +1,14 @@
+name: Plicara metadata
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.12 --locked --script .plicara/check.py
