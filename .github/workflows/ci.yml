@@ -13,6 +13,8 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,22 +22,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+        run: uv sync --locked --extra dev
 
       - name: Lint
-        run: ruff check .
+        run: uv run --locked --extra dev ruff check .
 
       - name: Type-check
-        run: mypy
+        run: uv run --locked --extra dev mypy
 
       - name: Test
-        run: pytest -q
+        run: uv run --locked --extra dev python -m pytest -q
 
   # The released security path — the proposer running inside bubblewrap — is
   # skipped everywhere bubblewrap is absent, which is every other job. Install
@@ -44,13 +47,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install
-        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+        run: uv sync --locked --extra dev
 
       - name: Install bubblewrap and allow unprivileged user namespaces
         run: |
@@ -61,12 +65,13 @@ jobs:
           fi
 
       - name: Sandbox tests (bubblewrap)
-        run: pytest -q --require-sandbox tests/test_sandbox.py
+        run: uv run --locked --extra dev python -m pytest -q --require-sandbox tests/test_sandbox.py
 
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
 
       - uses: actions/setup-python@v5
         with:
@@ -74,9 +79,8 @@ jobs:
 
       - name: Build and check metadata
         run: |
-          python -m pip install --upgrade pip build twine
-          python -m build
-          twine check dist/*
+          uv build
+          uvx twine check dist/*
 
       # Installs the wheel into a clean environment and drives it end to end.
       # `twine check` validates metadata, not that the package actually
@@ -84,8 +88,8 @@ jobs:
       # user's first command.
       - name: Smoke test the built wheel
         run: |
-          python -m venv /tmp/smoke
-          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python --quiet dist/*.whl
           cd "$(mktemp -d)"
           git init -q . && git config user.email ci@test && git config user.name ci
           echo 'print("val_loss = 2.0")' > train.py

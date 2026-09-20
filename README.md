@@ -397,3 +397,7 @@ Released as 1.x. The Python package uses only the standard library; the default 
 ## License
 
 Apache-2.0.
+
+## Working in this repository
+
+Project metadata and research context live in [.plicara/README.md](.plicara/README.md); agent constraints live in [AGENTS.md](AGENTS.md). Use `make setup` and `make check` for the default local environment and verification. Expensive experiments, model downloads, and publication are separate explicit steps. Project status is authoritative in `.plicara/project.yaml`; no central board update is required.

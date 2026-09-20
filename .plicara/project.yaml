@@ -1,0 +1,16 @@
+schema_version: 1
+id: labloop
+name: "labloop"
+description: "An experiment loop that retains changes only when a measured objective improves."
+kind: tool
+status: maintained
+repository: https://github.com/plicara/labloop
+python:
+  - .
+artifacts:
+  - kind: reference
+    path: docs
+  - kind: reference
+    path: tests
+  - kind: reference
+    path: cookbook
