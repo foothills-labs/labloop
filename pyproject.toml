@@ -70,6 +70,7 @@ include = [
 testpaths = ["tests"]
 
 [tool.ruff]
+extend-exclude = [".plicara", ".agents"]
 line-length = 100
 src = ["src", "tests"]
 
