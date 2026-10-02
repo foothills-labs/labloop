@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["PyYAML==6.0.2"]
 # ///
-"""Plicara contract v1. Canonical copy: project-template/.plicara/check.py.
+"""Plicara contract v1, revision 2 (one record per repository). Canonical copy: project-template/.plicara/check.py.
 
 Vendored deliberately: checking a project never requires a sibling checkout.
 Update this file only as an explicit tooling migration.
@@ -11,8 +11,10 @@ Update this file only as an explicit tooling migration.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tomllib
 from urllib.parse import urlparse
@@ -22,7 +24,8 @@ import yaml
 KINDS = {"study", "tool", "benchmark", "dataset", "publication", "collection", "operations"}
 STATUSES = {"planned", "active", "maintained", "paused", "completed", "archived"}
 REQUIRED = {"schema_version", "id", "name", "description", "kind", "status"}
-OPTIONAL = {"repository", "projects", "artifacts", "related", "python", "reason", "resume_when", "readme"}
+OPTIONAL = {"repository", "artifacts", "related", "python", "vendored", "reason", "resume_when", "readme"}
+LAB_FILES = {".plicara", ".agents", "AGENTS.md"}
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -76,10 +79,39 @@ def list_field(data: dict, key: str) -> list:
     return value
 
 
-def validate(root: Path, *, repository_root: bool = True, seen=None) -> list[tuple[Path, dict]]:
+def repository_files(root: Path) -> list[str]:
+    """Tracked and untracked, non-ignored files; every file when not in Git."""
+    try:
+        out = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                             check=True, capture_output=True, text=True).stdout
+        return [line for line in out.split("\0") if line]
+    except (OSError, subprocess.CalledProcessError):
+        files = []
+        for directory, subdirectories, names in os.walk(root):
+            subdirectories[:] = [d for d in subdirectories if d != ".git"]
+            files.extend(str(Path(directory, name).relative_to(root)) for name in names)
+        return files
+
+
+def nested_metadata(root: Path, vendored: list[Path]) -> list[str]:
+    """Lab metadata below the repository root: one record per repository."""
+    found = set()
+    for name in repository_files(root):
+        parts = Path(name).parts
+        for depth, part in enumerate(parts[1:], start=1):
+            if part in LAB_FILES:
+                path = Path(*parts[:depth + 1])
+                if not any((root / path).resolve().is_relative_to(v) for v in vendored):
+                    found.add(path.as_posix())
+                break
+    return sorted(found)
+
+
+def validate(root: Path) -> list[tuple[Path, dict]]:
     root = root.resolve()
-    seen = {} if seen is None else seen
     data = read_metadata(root)
+    if "projects" in data:
+        raise ValueError("projects is retired: keep one record per repository and describe its folders in the README")
     missing, unknown = REQUIRED - data.keys(), data.keys() - REQUIRED - OPTIONAL
     if missing or unknown:
         raise ValueError(f"missing fields: {sorted(missing)}; unknown fields: {sorted(unknown)}")
@@ -89,9 +121,6 @@ def validate(root: Path, *, repository_root: bool = True, seen=None) -> list[tup
         text_field(data, key)
     if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", data["id"]):
         raise ValueError("id must be a stable lowercase kebab-case identifier")
-    if data["id"] in seen:
-        raise ValueError(f"duplicate project id {data['id']}: {seen[data['id']]} and {root}")
-    seen[data["id"]] = root
     if data["kind"] not in KINDS or data["status"] not in STATUSES:
         raise ValueError("unrecognized kind or status")
     for key in ("reason", "resume_when"):
@@ -104,9 +133,8 @@ def validate(root: Path, *, repository_root: bool = True, seen=None) -> list[tup
     for path in (data.get("readme", "README.md"), "AGENTS.md", ".plicara/README.md", ".agents/skills/README.md"):
         if not local_path(root, path).is_file():
             raise ValueError(f"expected file: {path}")
-    if repository_root:
-        for path in ("Makefile", ".plicara/check.py"):
-            local_path(root, path)
+    for path in ("Makefile", ".plicara/check.py"):
+        local_path(root, path)
     if "repository" in data:
         url = urlparse(text_field(data, "repository"))
         if url.scheme != "https" or not url.netloc:
@@ -134,16 +162,11 @@ def validate(root: Path, *, repository_root: bool = True, seen=None) -> list[tup
         for filename in ("uv.lock", ".python-version"):
             if not (project / filename).is_file():
                 raise ValueError(f"{directory}: missing {filename}")
-    records = [(root, data)]
-    children = list_field(data, "projects")
-    if children and data["kind"] != "collection":
-        raise ValueError("only a collection may declare projects")
-    for child in children:
-        path = local_path(root, child)
-        if path == root:
-            raise ValueError("a project cannot contain itself")
-        records.extend(validate(path, repository_root=False, seen=seen))
-    return records
+    vendored = [local_path(root, directory) for directory in list_field(data, "vendored")]
+    nested = nested_metadata(root, vendored)
+    if nested:
+        raise ValueError(f"lab metadata belongs only at the repository root: {', '.join(nested)}")
+    return [(root, data)]
 
 
 def main() -> int:
