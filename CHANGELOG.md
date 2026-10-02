@@ -15,6 +15,8 @@
     forgery in the "other" format fails the trial.
 - Both findings were found by adversarial review of the 1.0.4 release before
   any chase ran with them.
+- The publish workflow runs the same duplicate-version gate as the release script: a browser-created GitHub Release for a version already on PyPI now fails at the gate instead of mid-upload. The check lives in `scripts/check_pypi_version.sh`, shared by both paths to publication.
+
 ## 1.0.4 — 2026-09-16
 
 - `--strict-metric`: a trial whose output repeats the metric key fails instead
