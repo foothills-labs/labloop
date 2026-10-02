@@ -36,8 +36,9 @@ experiment on a disposable, credential-free machine for adversarial code.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
-from pathlib import Path
+import sys
+from collections.abc import Iterable, Sequence
+from pathlib import Path, PurePosixPath
 
 from .types import UsageError
 
@@ -49,6 +50,7 @@ __all__ = [
     "file_digest",
     "harness_digest",
     "harness_files",
+    "import_shadow",
 ]
 
 _CHUNK = 1 << 16
@@ -199,3 +201,43 @@ def _digest_file(path: Path) -> bytes:
         while chunk := fh.read(_CHUNK):
             digest.update(chunk)
     return digest.digest()
+
+
+_IMPORT_SUFFIXES = ("py", "pyc", "pyo")
+_LOADER_SUFFIXES = (".py", ".pyc", ".pyo", ".so")
+
+
+def import_shadow(paths: Iterable[str]) -> str | None:
+    """Name the first path a Python standard-library module could shadow.
+
+    Python puts the run script's directory on ``sys.path`` unprompted, so a
+    planted ``json.py`` — or a ``json/`` directory, or a crafted
+    ``hashlib.cpython-*.pyc`` — anywhere a measurement's Python imports from
+    replaces the stdlib for the experiment itself: the planted ``hashlib``
+    can approve every recorded output hash while ``format`` runs instantly.
+
+    Only importable shapes count: a directory with a stdlib name, or a file
+    whose stem is one and whose suffix is a Python loader suffix
+    (``.py``/``.pyc``/``.pyo``) or a compiled extension (``.so``, including
+    ``.cpython-*.so``). ``notes.md`` named ``this`` is not importable and is
+    left alone. Callers pass *new untracked* paths only: a stdlib-named file
+    tracked since the baseline is vendored source the proposer may edit.
+
+    A hit is fail-closed, not proof of attack: a legitimate new module named
+    like a stdlib one fails loudly here — rename it or turn the guard off.
+    """
+    for path in sorted(paths):
+        parts = PurePosixPath(path).parts
+        for i, part in enumerate(parts):
+            if i < len(parts) - 1:
+                if part in sys.stdlib_module_names:
+                    return path
+                continue
+            base, dot, suffix = part.partition(".")
+            if not dot:
+                continue
+            if base not in sys.stdlib_module_names:
+                continue
+            if suffix in _IMPORT_SUFFIXES or suffix.endswith(_LOADER_SUFFIXES):
+                return path
+    return None

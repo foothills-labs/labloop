@@ -21,10 +21,11 @@ from .integrity import (
     file_digest,
     harness_digest,
     harness_files,
+    import_shadow,
 )
 from .ledger import Ledger
 from .lock import LedgerLock
-from .metrics import MetricNotFound, extract_metric
+from .metrics import MetricAmbiguous, MetricNotFound, extract_metric
 from .runner import Completed, run_command
 from .sandbox import resolve_sandbox, verify_sandbox
 from .types import Experiment, Goal, Outcome, Trial, UsageError
@@ -371,7 +372,10 @@ class Loop:
         rejected = reject_tampering(completed, "run")
         if rejected is not None:
             return rejected
-        metric = self._read_metric(completed.output)
+        try:
+            metric = self._read_metric(completed.output)
+        except MetricAmbiguous as exc:
+            return reject(Outcome.FAILED, spent, note=str(exc), stdout_tail=completed.tail)
 
         if metric is None or not completed.ok:
             return reject(self._failure(completed), spent, stdout_tail=completed.tail)
@@ -398,7 +402,13 @@ class Loop:
             rejected = reject_tampering(again, "confirmation run")
             if rejected is not None:
                 return rejected
-            second = self._read_metric(again.output)
+            try:
+                second = self._read_metric(again.output)
+            except MetricAmbiguous as exc:
+                note = f"won at {metric:.6g} but {exc}"
+                return reject(
+                    Outcome.REVERTED, spent, metric=None, note=note, stdout_tail=again.tail
+                )
             shown = f"{second:.6g}" if second is not None else "--"
             note = f"won at {metric:.6g} but measured {shown} on a second run"
 
@@ -631,6 +641,21 @@ class Loop:
         """
         if self._ledger_changed(ledger_before):
             return f"{phase} modified the ledger"
+        if self.experiment.guard_imports:
+            # Untracked alone is bypassable: a proposal that edits the
+            # tracked .gitignore parks its shadow among the ignored files,
+            # which porcelain never reports. Scan both sets — a stdlib-named
+            # file ignored before the baseline fails closed too.
+            shadow = import_shadow(
+                [*self.workspace.untracked_paths(), *self.workspace.ignored_paths()]
+            )
+            if shadow:
+                return (
+                    f"{phase} planted an import shadow: {shadow} — a new file "
+                    "named like a standard-library module can replace the "
+                    "stdlib for the measurement itself; if the module is "
+                    "legitimate, rename it or turn --guard-imports off"
+                )
         if harness is None:
             return None
         try:
@@ -676,7 +701,11 @@ class Loop:
 
     def _read_metric(self, output: str) -> float | None:
         try:
-            return extract_metric(output, self.experiment.metric)
+            return extract_metric(
+                output, self.experiment.metric, strict=self.experiment.strict_metric
+            )
+        except MetricAmbiguous:
+            raise  # a repeat is not "no metric": the caller owes the trial a verdict
         except MetricNotFound:
             return None
 

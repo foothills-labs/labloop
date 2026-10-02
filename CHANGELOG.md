@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 1.0.5 — 2026-09-16
 
+- Close two adversarial-review holes in the 1.0.4 guards, both reproduced:
+  - **`.gitignore` bypass of `--guard-imports`**: a proposal that edits the
+    tracked `.gitignore` can park its shadow among the ignored files, which
+    porcelain never reports, and the forged import loads while the guard sees
+    nothing. The guard now scans ignored paths alongside untracked ones
+    (`GitWorkspace.ignored_paths()`); a stdlib-named file ignored before the
+    baseline fails closed too.
+  - **Cross-format repeat under `--strict-metric`**: one key/value hit plus
+    one JSON hit evaded the repeat check because only the first matching
+    format was counted. Strict now counts mentions across both formats, so a
+    forgery in the "other" format fails the trial.
+- Both findings were found by adversarial review of the 1.0.4 release before
+  any chase ran with them.
 - The publish workflow runs the same duplicate-version gate as the release script: a browser-created GitHub Release for a version already on PyPI now fails at the gate instead of mid-upload. The check lives in `scripts/check_pypi_version.sh`, shared by both paths to publication.
+
+## 1.0.4 — 2026-09-16
+
+- `--strict-metric`: a trial whose output repeats the metric key fails instead
+  of letting the last occurrence win. The last line wins honestly for
+  experiments that stream a metric — and also for code under measurement that
+  prints a forged value *after* the real one, which is indistinguishable from
+  an honest progress line, so strict mode stops guessing and fails the trial
+  (reproduced: a 3-line `atexit` hook inside the library under test forges the
+  score while outputs, tests, and a confirmation run all stay clean).
+  Off by default; recorded in the manifest. A repeat at the trial records
+  `FAILED` with the repeat count; at baseline or noise calibration it refuses
+  loudly like a harness mismatch, and on a confirmation run reverts with the
+  reason instead of escaping as a traceback.
+- `--guard-imports`: a new untracked file whose name is a Python
+  standard-library module name — `json.py`, `hashlib/`, a crafted
+  `.cpython-*.pyc` or compiled `.so` — fails the trial as tampering instead of
+  being committed on a keep. Python puts the run script's directory on
+  `sys.path` unprompted; a shadow planted there replaces the standard library
+  for the measurement itself. A stdlib-named file tracked since the baseline
+  is vendored source and stays editable; a legitimate new module named like a
+  stdlib one fails loudly (rename it or turn the guard off). Off by default;
+  recorded in the manifest.
+- Git workspaces gained `untracked_paths()`, and the CLI styles
+  `MetricAmbiguous` as expected input rather than a crash.
 
 ## 1.0.3 — 2026-09-15
 

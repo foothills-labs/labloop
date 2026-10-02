@@ -7,6 +7,12 @@ Two formats are supported, tried in this order:
 
 The last occurrence within the first matching format wins. A later JSON line
 does not override an earlier key/value pair; callers should use one format.
+
+Experiments that stream a metric (``loss = ...`` every epoch) want that.
+Experiments whose run prints the metric once can demand it: with
+``strict=True`` a repeated key raises :class:`MetricAmbiguous` instead of
+picking, because a repeat printed after the real value — by the very code
+under measurement — is indistinguishable from an honest progress line.
 """
 
 from __future__ import annotations
@@ -14,11 +20,23 @@ from __future__ import annotations
 import json
 import re
 
-__all__ = ["extract_metric", "MetricNotFound"]
+__all__ = ["extract_metric", "MetricNotFound", "MetricAmbiguous"]
 
 
 class MetricNotFound(LookupError):
     """The named metric did not appear in the output."""
+
+
+class MetricAmbiguous(MetricNotFound):
+    """The key appeared more than once in the chosen format, under strict mode.
+
+    Its own subclass of MetricNotFound so a caller that only catches
+    MetricNotFound treats a repeat as "no usable metric" — while code that
+    cares can name the reason. A repeat is refused, not resolved: the last
+    line wins honestly when an experiment streams, but the last line also
+    wins for an attacker who prints after the real value, and the loop
+    cannot tell those apart. Failing the trial is the fail-closed reading.
+    """
 
 
 # nan and inf are matched because experiments print them: a diverged training
@@ -32,23 +50,36 @@ _NUMBER = (
 )
 
 
-def extract_metric(output: str, key: str) -> float:
+def extract_metric(output: str, key: str, *, strict: bool = False) -> float:
     """Return the last value of `key` in the first matching output format.
 
     Raises MetricNotFound if the key never appears, rather than returning a
     sentinel. A missing metric is a broken experiment, not a bad score, and
     the loop treats the two differently.
 
+    With ``strict``, raise MetricAmbiguous instead of choosing when the key
+    appears more than once — in EITHER format. Counting one key/value hit and
+    one JSON hit together is deliberate: an adversarial run prints its
+    forgery in whichever format the honest one did not use. Off by default:
+    streaming experiments legitimately repeat a metric, and last-wins in the
+    first matching format stays their contract.
+
     The result may be nan or inf. Those are values the experiment printed, so
     reporting them is honest; refusing to compare them is the loop's job.
     """
-    value = _from_key_value(output, key)
-    if value is not None:
-        return value
-
-    value = _from_json_lines(output, key)
-    if value is not None:
-        return value
+    kv = _key_value_matches(output, key)
+    js = _json_value_matches(output, key)
+    if strict and len(kv) + len(js) > 1:
+        raise MetricAmbiguous(
+            f"metric {key!r} printed {len(kv) + len(js)} times "
+            f"({len(kv)} key/value, {len(js)} JSON); strict mode refuses to "
+            "pick between repeats — a line printed after the real value "
+            "could be forging it"
+        )
+    if kv:
+        return kv[-1]
+    if js:
+        return js[-1]
 
     raise MetricNotFound(f"metric {key!r} not found in output")
 
@@ -65,20 +96,17 @@ def _word_edge(char: str) -> str:
     return r"\b" if char.isalnum() or char == "_" else ""
 
 
-def _from_key_value(output: str, key: str) -> float | None:
+def _key_value_matches(output: str, key: str) -> list[float]:
     pattern = re.compile(
         rf"{_word_edge(key[:1])}{re.escape(key)}{_word_edge(key[-1:])}"
         rf"\s*[=:]\s*({_NUMBER})",
         re.IGNORECASE,
     )
-    matches = pattern.findall(output)
-    if not matches:
-        return None
-    return float(matches[-1])
+    return [float(found) for found in pattern.findall(output)]
 
 
-def _from_json_lines(output: str, key: str) -> float | None:
-    found: float | None = None
+def _json_value_matches(output: str, key: str) -> list[float]:
+    found: list[float] = []
     for line in output.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -89,7 +117,7 @@ def _from_json_lines(output: str, key: str) -> float | None:
             continue
         if isinstance(obj, dict) and key in obj:
             try:
-                found = float(obj[key])
+                found.append(float(obj[key]))
             except (TypeError, ValueError):
                 continue
     return found

@@ -133,6 +133,29 @@ class Experiment:
     brief: bool = True
     confirm: bool = False
     min_delta: float = 0.0
+    strict_metric: bool = False
+    """Fail a trial whose output repeats the metric key.
+
+    Off by default: an experiment that streams a metric (a loss per epoch)
+    wants last-wins, and that is the documented contract. On, one repeat is
+    enough to fail the trial — the loop cannot tell a line printed *after*
+    the real value (by the code under measurement, which may be forging it)
+    from an honest progress line, so it stops guessing. Recorded in the
+    manifest.
+    """
+    guard_imports: bool = False
+    """Treat a planted stdlib shadow as tampering, not a proposal.
+
+    Off by default. On, a new untracked file whose name is a Python
+    standard-library module name — ``json.py``, ``hashlib/`` — anywhere in
+    the worktree during a phase fails it: planted where the run's Python
+    imports from, it replaces the standard library for the measurement
+    itself. Python puts the run script's directory on `sys.path` unprompted.
+    A stdlib-named file tracked since the baseline is vendored source the
+    proposer may edit, so only *new* untracked paths count. A legitimate
+    new module named like a stdlib one fails loudly — rename it or turn the
+    guard off. Recorded in the manifest.
+    """
     give_up_after: int = 10
     propose_budget: float | None = None
     label: str | None = None
@@ -195,6 +218,8 @@ class Experiment:
             "brief": self.brief,
             "confirm": self.confirm,
             "min_delta": self.min_delta,
+            "strict_metric": self.strict_metric,
+            "guard_imports": self.guard_imports,
             "give_up_after": self.give_up_after,
             "propose_budget": self.propose_budget,
             "label": self.label,

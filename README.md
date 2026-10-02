@@ -163,6 +163,8 @@ val_loss = 1.234        # key=value or key: value
 {"step": 40, "val_loss": 1.234}    # a JSON object on its own line
 ```
 
+Pass `--strict-metric` to fail any trial whose output repeats the metric key, instead of letting the last occurrence win. Streaming a metric is legitimate, but so is code under measurement that prints a forged value after the real one, and the two look the same. Strict mode counts mentions across both formats, is off by default, and is recorded in the manifest.
+
 ## Check your metric holds still
 
 Keep-or-revert assumes that a change in the metric means a change in the code.
@@ -261,6 +263,8 @@ stops rather than compare two numbers that came from different measurements.
 If the complete protect set matches no files, startup fails. Individual unmatched patterns alongside valid matches are not currently rejected, so check each path. When something moves, the trial names the file: `proposal modified the harness: data/holdout.csv` tells you where to look.
 
 **Protect the measurement, not the directory it lives in.** If your evaluator writes a cache or a log inside a protected path, the current measurement is rejected. Caches are artifacts; keep them somewhere you are not protecting.
+
+Pass `--guard-imports` to fail a trial that adds a file named like a Python standard-library module (`json.py`, `hashlib/`, a crafted `.pyc` or `.so`). Python puts the run script's directory on `sys.path`, so a shadow planted there replaces the standard library for the measurement itself. The guard scans untracked and ignored paths. A stdlib-named file already tracked at the baseline is vendored source and stays editable. Off by default; recorded in the manifest.
 
 ## Sandboxing the proposer
 
@@ -397,3 +401,7 @@ Released as 1.x. The Python package uses only the standard library; the default 
 ## License
 
 Apache-2.0.
+
+## Working in this repository
+
+Project metadata and research context live in [.plicara/README.md](.plicara/README.md); agent constraints live in [AGENTS.md](AGENTS.md). Use `make setup` and `make check` for the default local environment and verification. Expensive experiments, model downloads, and publication are separate explicit steps. Project status is authoritative in `.plicara/project.yaml`; no central board update is required.

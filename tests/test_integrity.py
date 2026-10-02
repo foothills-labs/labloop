@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from labloop import NoProtectedFilesError, harness_digest, run_command
-from labloop.integrity import changed_files, harness_files
+from labloop.integrity import changed_files, harness_files, import_shadow
 
 
 def write(root, name: str, text: str = "x"):
@@ -183,3 +183,35 @@ def test_a_shadow_package_moves_the_digest(tmp_path):
     after = harness_digest(tmp_path, ["mod.py"])
     assert before != after
     assert "mod/__init__.py" in harness_files(tmp_path, ["mod.py"])
+
+
+def test_flags_a_planted_shadow_module():
+    assert import_shadow(["experiments/demo/hashlib.py"]) == "experiments/demo/hashlib.py"
+
+
+def test_flags_a_shadow_package_directory():
+    path = "experiments/demo/json/__init__.py"
+    assert import_shadow([path]) == path
+
+
+def test_flags_a_crafted_pyc():
+    path = "upstream/sqlparse/__pycache__/hashlib.cpython-314.pyc"
+    assert import_shadow([path]) == path
+
+
+def test_flags_a_compiled_extension_shadow():
+    path = "demo/json.cpython-314-x86_64-linux-gnu.so"
+    assert import_shadow([path]) == path
+
+
+def test_non_stdlib_names_pass():
+    assert import_shadow(["upstream/sqlparse/lexer.py", "tomli/__init__.py"]) is None
+
+
+def test_non_importable_files_pass():
+    assert import_shadow(["notes/this.md", "scratch/json.txt"]) is None
+
+
+def test_init_module_of_a_shadow_package_is_named_by_its_directory():
+    # json/__init__.py is caught by the json/ component, not the stem.
+    assert import_shadow(["a/json/__init__.py"]) == "a/json/__init__.py"

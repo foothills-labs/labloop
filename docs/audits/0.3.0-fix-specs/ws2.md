@@ -1,0 +1,12 @@
+You are a senior engineer hardening "labloop" (a keep-or-revert experiment loop) to PRODUCTION quality. Work ONLY in your assigned worktree directory. Do not touch files outside it. Do not edit files owned by another workstream. Read the code before changing it. Keep the public API and existing behavior; the repo has 256 passing tests — every one must still pass, plus new regression tests you add. Run the FULL suite with:
+    uv run --with pytest pytest -q
+Commit nothing (the orchestrator merges). Deliver: the change, new tests, and a short report (what changed, files, why, test output).
+
+WORKTREE: /home/ryo/repositories/ll-ws2   (fix belongs in src/labloop/runner.py; tests + docstring in src/labloop/integrity.py)
+
+BUG (high, footgun): protecting a directory digests __pycache__/*.pyc, which a proposer's own sanity check writes.
+- integrity.py _matching() uses rglob("*") and hashes every file under a protected directory, including compiled bytecode. A proposing command that imports a module or runs `py_compile` writes __pycache__ inside the protected tree, so the digest moves and EVERY trial is recorded harness_changed (nothing can ever be kept).
+EXPECTED: a normal Python self-check inside the proposed command must NOT move the harness digest. AND a deliberately poisoned/planted .pyc must still be DETECTED as a harness change — do NOT "fix" this by simply excluding .pyc/__pycache__ from the digest, which would reopen a score-forgery hole (a crafted .pyc can override unchanged source if Python reads it).
+FIX DIRECTION: have labloop run child commands with bytecode written OUT of the tree: set PYTHONPYCACHEPREFIX (e.g. to a labloop-owned temp dir) in the child environment, unless the caller already set it. Inject it in runner.run_command()'s merged_env — do NOT mutate os.environ globally. (Keep hashing __pycache__ so a planted .pyc is still caught; with the cache prefix Python will not read an in-tree .pyc anyway.) Update the integrity docstring to explain the reasoning.
+TESTS (tests/test_integrity.py and/or runner tests): (1) run a command that imports/compiles a module under a protected dir via run_command, then assert the harness digest is unchanged and no __pycache__ appeared in the tree; (2) assert a planted in-tree .pyc is still digested (still detected). If the test environment already sets PYTHONPYCACHEPREFIX, make the test explicit about the override.
+Verify: `uv run --with pytest pytest -q` all green.

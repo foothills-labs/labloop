@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from labloop import MetricNotFound, extract_metric
+from labloop import MetricAmbiguous, MetricNotFound, extract_metric
 
 
 def test_reads_key_value_pair():
@@ -75,3 +75,54 @@ def test_a_word_beginning_with_inf_is_not_a_number():
         extract_metric("status = info", "status")
     with pytest.raises(MetricNotFound):
         extract_metric("units = nanoseconds", "units")
+
+
+def test_strict_still_reads_a_single_occurrence():
+    assert extract_metric("val_loss = 1.5", "val_loss", strict=True) == 1.5
+
+
+def test_strict_refuses_a_repeated_key():
+    with pytest.raises(MetricAmbiguous):
+        extract_metric("val_loss = 1.5\nval_loss = 1.4", "val_loss", strict=True)
+
+
+def test_strict_refuses_a_repeated_identical_value():
+    # The forgery prints the real value again; refusing repeats of the same
+    # number too keeps the rule simple enough to trust.
+    with pytest.raises(MetricAmbiguous):
+        extract_metric("val_loss = 1.5\nval_loss = 1.5", "val_loss", strict=True)
+
+
+def test_default_stays_last_wins_for_streaming():
+    assert extract_metric("val_loss = 1.5\nval_loss = 1.4", "val_loss") == 1.4
+
+
+def test_strict_json_repeats_raise():
+    with pytest.raises(MetricAmbiguous):
+        extract_metric('{"val": 1.0}\n{"val": 0.5}', "val", strict=True)
+
+
+def test_strict_single_json_line_is_fine():
+    assert extract_metric('{"val": 1.0}', "val", strict=True) == 1.0
+
+
+def test_strict_only_governs_the_format_that_matched():
+    # One key=value hit answers the call before JSON is consulted.
+    assert extract_metric("val = 1.0\n", "val", strict=True) == 1.0
+
+
+def test_strict_counts_a_repeat_across_formats():
+    # A forged kv line printed before the honest JSON one: first-format
+    # precedence would read the forgery; strict counts both and refuses.
+    with pytest.raises(MetricAmbiguous):
+        extract_metric('seconds = 0.001\n{"seconds": 0.1}', "seconds", strict=True)
+
+
+def test_strict_kv_and_json_each_once_still_raise():
+    output = 'val = 1.0\n{"val": 0.5}\n'
+    with pytest.raises(MetricAmbiguous):
+        extract_metric(output, "val", strict=True)
+
+
+def test_default_cross_format_stays_first_format_wins():
+    assert extract_metric('seconds = 0.001\n{"seconds": 0.1}', "seconds") == 0.001
